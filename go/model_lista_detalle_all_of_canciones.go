@@ -9,7 +9,7 @@
 
 package openapi
 
-type UsuariosIdUsuarioFavoritosCancionesGet200ResponseInner struct {
+type ListaDetalleAllOfCanciones struct {
 
 	IdCancion int32 `json:"idCancion,omitempty"`
 }

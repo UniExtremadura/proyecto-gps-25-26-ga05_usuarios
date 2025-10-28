@@ -9,15 +9,7 @@
 
 package openapi
 
-type ListaDetalle struct {
+type AlbumFavorito struct {
 
-	Id int32 `json:"id"`
-
-	Nombre string `json:"nombre"`
-
-	UrlImagen string `json:"urlImagen,omitempty"`
-
-	IdUsuario int32 `json:"idUsuario"`
-
-	Canciones []ListaDetalleAllOfCanciones `json:"canciones,omitempty"`
+	IdAlbum int32 `json:"idAlbum"`
 }

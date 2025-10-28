@@ -377,7 +377,7 @@ paths:
             application/json:
               schema:
                 items:
-                  $ref: "#/components/schemas/_usuarios__idUsuario__favoritos_canciones_get_200_response_inner"
+                  $ref: "#/components/schemas/CancionFavorita"
                 type: array
           description: Lista de canciones favoritas
         "404":
@@ -468,7 +468,7 @@ paths:
             application/json:
               schema:
                 items:
-                  $ref: "#/components/schemas/_usuarios__idUsuario__favoritos_albums_get_200_response_inner"
+                  $ref: "#/components/schemas/AlbumFavorito"
                 type: array
           description: Lista de albumes favoritos
         "404":
@@ -559,7 +559,7 @@ paths:
             application/json:
               schema:
                 items:
-                  $ref: "#/components/schemas/_usuarios__idUsuario__favoritos_artistas_get_200_response_inner"
+                  $ref: "#/components/schemas/ArtistaFavorito"
                 type: array
           description: Lista de artistas favoritos
         "404":
@@ -649,9 +649,7 @@ paths:
           content:
             application/json:
               schema:
-                items:
-                  $ref: "#/components/schemas/_usuarios__idUsuario__favoritos_albums_get_200_response_inner"
-                type: array
+                $ref: "#/components/schemas/AlbumDeseado"
           description: Lista de albumes deseados
         "404":
           content:
@@ -1147,7 +1145,7 @@ components:
       - properties:
           canciones:
             items:
-              $ref: "#/components/schemas/_usuarios__idUsuario__favoritos_canciones_get_200_response_inner"
+              $ref: "#/components/schemas/ListaDetalle_allOf_canciones"
             type: array
         type: object
       example:
@@ -1283,24 +1281,50 @@ components:
       - codigo
       - mensaje
       type: object
-    _usuarios__idUsuario__favoritos_canciones_get_200_response_inner:
+    CancionFavorita:
+      example:
+        idCancion: 123
+      properties:
+        idCancion:
+          example: 123
+          type: integer
+      required:
+      - idCancion
+      type: object
+    AlbumFavorito:
+      example:
+        idAlbum: 456
+      properties:
+        idAlbum:
+          example: 456
+          type: integer
+      required:
+      - idAlbum
+      type: object
+    ArtistaFavorito:
+      example:
+        idArtista: 789
+      properties:
+        idArtista:
+          example: 789
+          type: integer
+      required:
+      - idArtista
+      type: object
+    AlbumDeseado:
+      example:
+        idAlbum: 456
+      properties:
+        idAlbum:
+          example: 456
+          type: integer
+      required:
+      - idAlbum
+      type: object
+    ListaDetalle_allOf_canciones:
       example:
         idCancion: 0
       properties:
         idCancion:
-          type: integer
-      type: object
-    _usuarios__idUsuario__favoritos_albums_get_200_response_inner:
-      example:
-        idAlbum: 0
-      properties:
-        idAlbum:
-          type: integer
-      type: object
-    _usuarios__idUsuario__favoritos_artistas_get_200_response_inner:
-      example:
-        idArtista: 0
-      properties:
-        idArtista:
           type: integer
       type: object
