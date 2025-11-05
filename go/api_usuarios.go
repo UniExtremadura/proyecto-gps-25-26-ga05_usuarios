@@ -10,10 +10,29 @@
 package openapi
 
 import (
+	"database/sql"
+	"os"
+	"time"
+
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type UsuariosAPI struct {
+	DB *sql.DB
+}
+
+var JwtKey = []byte(os.Getenv("JWT_SECRET_KEY"))
+
+type Claims struct {
+	UserID int `json:"user_id"`
+	jwt.StandardClaims
+}
+
+type PeticionLogin struct {
+	Correo string 		`json:"correo"`
+	Contrasena string 	`json:"contrasena"`
 }
 
 // Get /usuarios
@@ -45,9 +64,171 @@ func (api *UsuariosAPI) UsuariosIdUsuarioPatch(c *gin.Context) {
 }
 
 // Post /usuarios
-// Registrar un nuevo usuario 
+// Registrar un nuevo usuario o hacer login
 func (api *UsuariosAPI) UsuariosPost(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+	var datos map[string]any
+
+	err := c.ShouldBindJSON(&datos)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Datos inválidos " + err.Error()})
+		return
+	}
+
+	// Sin sólo tiene correo y contraseña, es login
+	if len(datos) == 2 && datos["correo"] != nil && datos["contrasena"] != nil {
+		api.loginUsuario(c, datos)
+		return
+	}
+
+	// Si tiene más campos, es registro
+	api.registrarUsuario(c, datos)
+	
+	//c.JSON(200, gin.H{"status": "OK"})
 }
 
+func (api *UsuariosAPI) registrarUsuario(c *gin.Context, datos map[string]any) {
+	// Se extraen los datos
+    nombre, _ := datos["nombre"].(string)
+    correo, _ := datos["correo"].(string)
+    contrasena, _ := datos["contrasena"].(string)
+    direccion, _ := datos["direccion"].(string)
+    telefono, _ := datos["telefono"].(string)
+    descripcion, _ := datos["descripcion"].(string)
+    urlImagen, _ := datos["urlImagen"].(string)
+	tipoFloat, _ := datos["tipo"].(float64)
+	tipo := int(tipoFloat)
+    
+    // Validar campos requeridos
+    if nombre == "" || correo == "" || contrasena == "" {
+        c.JSON(400, gin.H{"error": "Nombre, correo y contraseña son requeridos"})
+        return
+    }
+
+	// Validar el tipo de usuario (sólo puede ser Usuario básico (4) o Artista (2))
+	if tipo != 4 && tipo != 2 {
+        c.JSON(400, gin.H{"error": "Tipo de usuario inválido"})
+        return
+	}
+
+	// Se verifica si el usuario ya existe
+	var idUsuarioExistente int
+	err := api.DB.QueryRow("SELECT id FROM usuario WHERE correo = $1", correo).Scan(&idUsuarioExistente)
+	if err != sql.ErrNoRows {
+		c.JSON(400, gin.H{"error": "El correo ya está registrado"})
+		return
+	}
+
+	// Se saca el hash de la contraseña
+	contrasenaHasheada, err := bcrypt.GenerateFromPassword([]byte(contrasena), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Error al hashear la contraseña"})
+		return
+	}
+
+	var idUsuario int
+	err = api.DB.QueryRow(
+		`INSERT INTO usuario (nombre, correo, contrasena, direccion, telefono, descripcion, urlImagen, tipo)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+		nombre, correo, string(contrasenaHasheada), direccion, telefono, descripcion, urlImagen, tipo,
+	).Scan(&idUsuario)
+
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Error al crear el usuario: " + err.Error()})
+		return
+	}
+
+	// Generar JWT automáticamente después del registro
+	caducidadJWT := time.Now().Add(24 * time.Hour)
+	claims := &Claims{
+		UserID: idUsuario,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: caducidadJWT.Unix(),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(JwtKey)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Error al generar el token"})
+		return
+	}
+
+	c.JSON(201, gin.H{
+		"id":          idUsuario,
+		"nombre":      nombre,
+		"correo":      correo,
+		"direccion":   direccion,
+		"telefono":    telefono,
+		"descripcion": descripcion,
+		"urlImagen":   urlImagen,
+		"tipo":        tipo,
+		"token":       tokenString,
+		"caducidad":   caducidadJWT,
+	})
+}
+
+func (api *UsuariosAPI) loginUsuario(c *gin.Context, datos map[string]any) {
+	var idUsuario int
+	var contrasenaHasheada string
+
+	// Se extraen los datos
+    nombre, _ := datos["nombre"].(string)
+    correo, _ := datos["correo"].(string)
+    contrasena, _ := datos["contrasena"].(string)
+    direccion, _ := datos["direccion"].(string)
+    telefono, _ := datos["telefono"].(string)
+    descripcion, _ := datos["descripcion"].(string)
+    urlImagen, _ := datos["urlImagen"].(string)
+	tipoFloat, _ := datos["tipo"].(float64)
+	tipo := int(tipoFloat)
+
+	err := api.DB.QueryRow(
+		"SELECT id, nombre, correo, contrasena, direccion, telefono, descripcion, urlImagen, tipo FROM usuario WHERE correo = $1",
+		correo,
+	).Scan(&idUsuario, &nombre, &correo, &contrasenaHasheada, &direccion, &telefono, &descripcion, &urlImagen, &tipo)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(401, gin.H{"error": "Credenciales inválidas"})
+		} else {
+			c.JSON(500, gin.H{"error": "Error interno del servidor"})
+		}
+		return
+	}
+
+	// Verificar contraseña
+	err = bcrypt.CompareHashAndPassword([]byte(contrasenaHasheada), []byte(contrasena))
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Credenciales inválidas"})
+		return
+	}
+
+	// Generar JWT
+	caducidadJWT := time.Now().Add(24 * time.Hour)
+	claims := &Claims{
+		UserID: idUsuario,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: caducidadJWT.Unix(),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	strToken, err := token.SignedString(JwtKey)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error al generar el token"})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"id":          idUsuario,
+		"nombre":      nombre,
+		"correo":      correo,
+		"direccion":   direccion,
+		"telefono":    telefono,
+		"descripcion": descripcion,
+		"urlImagen":   urlImagen,
+		"tipo":        tipo,
+		"token":       strToken,
+		"caducidad":   caducidadJWT,
+	})
+}
