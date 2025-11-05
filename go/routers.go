@@ -11,6 +11,7 @@ package openapi
 
 import (
 	"net/http"
+	"usuarios/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -34,6 +35,28 @@ func NewRouter(handleFunctions ApiHandleFunctions) *gin.Engine {
 
 // NewRouter add routes to existing gin engine.
 func NewRouterWithGinEngine(router *gin.Engine, handleFunctions ApiHandleFunctions) *gin.Engine {
+	
+	// El middleware decide si aplicar autenticación basándose en el endpoint
+	router.Use(func(c *gin.Context) {
+		// Rutas públicas
+		rutasPublicas := map[string]bool {
+			"POST /usuarios": true,
+			"GET /usuarios": true,
+		}
+
+		// Se formatea la clave de la ruta actual
+		claveRuta := c.Request.Method + " " + c.FullPath()
+
+		// Se comprueba si la ruta está entre las públicas
+		if !rutasPublicas[claveRuta] {
+			authMiddleware := middleware.Auth()
+			authMiddleware(c)
+		}
+
+		c.Next()
+	})
+	
+	// Se añaden las rutas
 	for _, route := range getRoutes(handleFunctions) {
 		if route.HandlerFunc == nil {
 			route.HandlerFunc = DefaultHandleFunc
