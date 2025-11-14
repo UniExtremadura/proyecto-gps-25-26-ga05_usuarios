@@ -42,6 +42,7 @@ func NewRouterWithGinEngine(router *gin.Engine, handleFunctions ApiHandleFunctio
 		rutasPublicas := map[string]bool {
 			"POST /usuarios": true,
 			"GET /usuarios": true,
+			"GET /usuarios/:idUsuario": true,
 		}
 
 		// Se formatea la clave de la ruta actual
