@@ -43,6 +43,7 @@ func NewRouterWithGinEngine(router *gin.Engine, handleFunctions ApiHandleFunctio
 			"POST /usuarios": true,
 			"GET /usuarios": true,
 			"GET /artistas/:idArtista": true,
+			"GET /usuarios/:idUsuario": true,
 		}
 
 		// Se formatea la clave de la ruta actual

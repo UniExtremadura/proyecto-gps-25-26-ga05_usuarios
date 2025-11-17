@@ -12,6 +12,7 @@ package openapi
 import (
 	"database/sql"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -36,31 +37,269 @@ type PeticionLogin struct {
 }
 
 // Get /usuarios
-// Buscar usuarios por nombre 
+// Buscar usuarios por nombre
 func (api *UsuariosAPI) UsuariosGet(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+	// Obtener parámetro de búsqueda
+	query := c.Query("q")
+	
+	if query == "" {
+		c.JSON(400, gin.H{"error": "Parámetro de búsqueda 'q' requerido"})
+		return
+	}
+
+	// Buscar usuarios por nombre
+	rows, err := api.DB.Query(`
+		SELECT id, nombre, correo, direccion, telefono, descripcion, urlImagen, tipo 
+		FROM usuario 
+		WHERE nombre ILIKE $1 OR correo ILIKE $1
+		LIMIT 50
+	`, "%"+query+"%")
+	
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error al buscar usuarios: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var usuarios []Usuario
+	for rows.Next() {
+		var usuario Usuario
+		err := rows.Scan(
+			&usuario.Id,
+			&usuario.Nombre,
+			&usuario.Correo,
+			&usuario.Direccion,
+			&usuario.Telefono,
+			&usuario.Descripcion,
+			&usuario.UrlImagen,
+			&usuario.Tipo,
+		)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Error al leer usuarios: " + err.Error()})
+			return
+		}
+		usuarios = append(usuarios, usuario)
+	}
+
+	c.JSON(200, usuarios)
 }
 
 // Delete /usuarios/:idUsuario
-// Eliminar un usuario por su ID 
+// Eliminar un usuario por su ID
 func (api *UsuariosAPI) UsuariosIdUsuarioDelete(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+	// Obtener ID del usuario desde la URL
+	idUsuarioStr := c.Param("idUsuario")
+	idUsuario, err := strconv.Atoi(idUsuarioStr)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "ID de usuario inválido"})
+		return
+	}
+
+	// Verificar si el usuario existe
+	var exists bool
+	err = api.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM usuario WHERE id = $1)", idUsuario).Scan(&exists)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error al verificar usuario: " + err.Error()})
+		return
+	}
+
+	if !exists {
+		c.JSON(404, gin.H{"error": "Usuario no encontrado"})
+		return
+	}
+
+	// Eliminar el usuario
+	result, err := api.DB.Exec("DELETE FROM usuario WHERE id = $1", idUsuario)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error al eliminar usuario: " + err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(404, gin.H{"error": "Usuario no encontrado"})
+		return
+	}
+
+	c.Status(204)
 }
 
 // Get /usuarios/:idUsuario
-// Obtener los datos de un usuario por su ID 
+// Obtener los datos de un usuario por su ID
 func (api *UsuariosAPI) UsuariosIdUsuarioGet(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+	// Obtener ID del usuario desde la URL
+	idUsuarioStr := c.Param("idUsuario")
+	idUsuario, err := strconv.Atoi(idUsuarioStr)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "ID de usuario inválido"})
+		return
+	}
+
+	// Buscar usuario en la base de datos
+	var usuario Usuario
+	err = api.DB.QueryRow(`
+		SELECT id, nombre, correo, direccion, telefono, descripcion, urlImagen, tipo 
+		FROM usuario 
+		WHERE id = $1
+	`, idUsuario).Scan(
+		&usuario.Id,
+		&usuario.Nombre,
+		&usuario.Correo,
+		&usuario.Direccion,
+		&usuario.Telefono,
+		&usuario.Descripcion,
+		&usuario.UrlImagen,
+		&usuario.Tipo,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(404, gin.H{"error": "Usuario no encontrado"})
+		} else {
+			c.JSON(500, gin.H{"error": "Error al obtener usuario: " + err.Error()})
+		}
+		return
+	}
+
+	c.JSON(200, usuario)
 }
 
 // Patch /usuarios/:idUsuario
 // Modificar los datos de un usuario existente 
 func (api *UsuariosAPI) UsuariosIdUsuarioPatch(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+    // Obtener ID del usuario desde la URL
+    idUsuarioStr := c.Param("idUsuario")
+    idUsuario, err := strconv.Atoi(idUsuarioStr)
+    if err != nil {
+        c.JSON(400, gin.H{"error": "ID de usuario inválido"})
+        return
+    }
+
+    // Verificar si el usuario existe
+    var exists bool
+    err = api.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM usuario WHERE id = $1)", idUsuario).Scan(&exists)
+    if err != nil {
+        c.JSON(500, gin.H{"error": "Error al verificar usuario: " + err.Error()})
+        return
+    }
+
+    if !exists {
+        c.JSON(404, gin.H{"error": "Usuario no encontrado"})
+        return
+    }
+
+    // Bind de los datos de actualización
+    var updateData UsuarioUpdate
+    if err := c.ShouldBindJSON(&updateData); err != nil {
+        c.JSON(400, gin.H{"error": "Datos de entrada inválidos: " + err.Error()})
+        return
+    }
+
+    // Construir consulta dinámica basada en los campos proporcionados
+    query := "UPDATE usuario SET "
+    params := []interface{}{}
+    paramCount := 1
+    camposActualizados := 0
+
+    // Verificar cada campo - si no está vacío, agregarlo a la actualización
+    if updateData.Nombre != "" {
+        query += "nombre = $" + strconv.Itoa(paramCount) + ", "
+        params = append(params, updateData.Nombre)
+        paramCount++
+        camposActualizados++
+    }
+    
+    if updateData.Correo != "" {
+        query += "correo = $" + strconv.Itoa(paramCount) + ", "
+        params = append(params, updateData.Correo)
+        paramCount++
+        camposActualizados++
+    }
+    
+    if updateData.Contrasena != "" {
+        // Hashear la nueva contraseña
+        contrasenaHasheada, err := bcrypt.GenerateFromPassword([]byte(updateData.Contrasena), bcrypt.DefaultCost)
+        if err != nil {
+            c.JSON(400, gin.H{"error": "Error al hashear la contraseña"})
+            return
+        }
+        query += "contrasena = $" + strconv.Itoa(paramCount) + ", "
+        params = append(params, string(contrasenaHasheada))
+        paramCount++
+        camposActualizados++
+    }
+    
+    if updateData.Direccion != "" {
+        query += "direccion = $" + strconv.Itoa(paramCount) + ", "
+        params = append(params, updateData.Direccion)
+        paramCount++
+        camposActualizados++
+    }
+    
+    if updateData.Telefono != "" {
+        query += "telefono = $" + strconv.Itoa(paramCount) + ", "
+        params = append(params, updateData.Telefono)
+        paramCount++
+        camposActualizados++
+    }
+    
+    if updateData.Descripcion != "" {
+        query += "descripcion = $" + strconv.Itoa(paramCount) + ", "
+        params = append(params, updateData.Descripcion)
+        paramCount++
+        camposActualizados++
+    }
+    
+    if updateData.UrlImagen != "" {
+        query += "urlImagen = $" + strconv.Itoa(paramCount) + ", "
+        params = append(params, updateData.UrlImagen)
+        paramCount++
+        camposActualizados++
+    }
+
+    // Verificar que hay campos para actualizar
+    if camposActualizados == 0 {
+        c.JSON(400, gin.H{"error": "No se proporcionaron campos para actualizar"})
+        return
+    }
+
+    // Remover la última coma y espacio
+    query = query[:len(query)-2]
+
+    // Agregar WHERE clause
+    query += " WHERE id = $" + strconv.Itoa(paramCount)
+    params = append(params, idUsuario)
+
+    // Ejecutar la actualización
+    _, err = api.DB.Exec(query, params...)
+    if err != nil {
+        c.JSON(500, gin.H{"error": "Error al actualizar usuario: " + err.Error()})
+        return
+    }
+
+    // Obtener el usuario actualizado para devolverlo
+    var usuarioActualizado Usuario
+    err = api.DB.QueryRow(`
+        SELECT id, nombre, correo, direccion, telefono, descripcion, urlImagen, tipo 
+        FROM usuario 
+        WHERE id = $1
+    `, idUsuario).Scan(
+        &usuarioActualizado.Id,
+        &usuarioActualizado.Nombre,
+        &usuarioActualizado.Correo,
+        &usuarioActualizado.Direccion,
+        &usuarioActualizado.Telefono,
+        &usuarioActualizado.Descripcion,
+        &usuarioActualizado.UrlImagen,
+        &usuarioActualizado.Tipo,
+    )
+
+    if err != nil {
+        c.JSON(500, gin.H{"error": "Error al obtener usuario actualizado: " + err.Error()})
+        return
+    }
+
+    c.JSON(200, usuarioActualizado)
 }
 
 // Post /usuarios
