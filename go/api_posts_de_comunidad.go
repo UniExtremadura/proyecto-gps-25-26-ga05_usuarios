@@ -10,51 +10,231 @@
 package openapi
 
 import (
+	"database/sql"
 	"github.com/gin-gonic/gin"
+	"net/http"
+	"strconv"
 )
 
 type PostsDeComunidadAPI struct {
+	DB *sql.DB
 }
 
 // Get /comunidades/:idComunidad/posts
 // Obtener posts de una comunidad 
 func (api *PostsDeComunidadAPI) ComunidadesIdComunidadPostsGet(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+	idComunidadStr := c.Param("idComunidad")
+	idComunidad, err := strconv.Atoi(idComunidadStr)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "ID de comunidad inválido"})
+		return
+	}
+
+	rows, err := api.DB.Query(`SELECT id, comentario, postPadre, idUsuario, idComunidad FROM postComunidad WHERE idComunidad = $1 ORDER BY id DESC LIMIT 100`, idComunidad)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error al obtener posts: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var posts []Post
+	for rows.Next() {
+		var p Post
+		var postPadre sql.NullInt32
+		if err := rows.Scan(&p.Id, &p.Comentario, &postPadre, &p.IdUsuario, &p.IdComunidad); err != nil {
+			c.JSON(500, gin.H{"error": "Error al leer posts: " + err.Error()})
+			return
+		}
+		if postPadre.Valid {
+			v := postPadre.Int32
+			p.PostPadre = &v
+		}
+		posts = append(posts, p)
+	}
+
+	c.JSON(200, posts)
 }
 
 // Post /comunidades/:idComunidad/posts
 // Crear un nuevo post en una comunidad 
 func (api *PostsDeComunidadAPI) ComunidadesIdComunidadPostsPost(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+	idComunidadStr := c.Param("idComunidad")
+	idComunidad, err := strconv.Atoi(idComunidadStr)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "ID de comunidad inválido"})
+		return
+	}
+
+	var nuevo PostCreate
+	if err := c.ShouldBindJSON(&nuevo); err != nil {
+		c.JSON(400, gin.H{"error": "Datos inválidos: " + err.Error()})
+		return
+	}
+
+	var idInsertado int
+	// postPadre puede ser nil
+	if nuevo.PostPadre != nil {
+		err = api.DB.QueryRow(`INSERT INTO postComunidad (comentario, postPadre, idUsuario, idComunidad) VALUES ($1, $2, $3, $4) RETURNING id`, nuevo.Comentario, *nuevo.PostPadre, nuevo.IdUsuario, idComunidad).Scan(&idInsertado)
+	} else {
+		err = api.DB.QueryRow(`INSERT INTO postComunidad (comentario, idUsuario, idComunidad) VALUES ($1, $2, $3) RETURNING id`, nuevo.Comentario, nuevo.IdUsuario, idComunidad).Scan(&idInsertado)
+	}
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error al crear post: " + err.Error()})
+		return
+	}
+
+	// Devolver el recurso creado
+	var creado Post
+	var postPadre sql.NullInt32
+	err = api.DB.QueryRow(`SELECT id, comentario, postPadre, idUsuario, idComunidad FROM postComunidad WHERE id = $1`, idInsertado).Scan(&creado.Id, &creado.Comentario, &postPadre, &creado.IdUsuario, &creado.IdComunidad)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error al obtener post creado: " + err.Error()})
+		return
+	}
+	if postPadre.Valid {
+		v := postPadre.Int32
+		creado.PostPadre = &v
+	}
+
+	c.JSON(http.StatusCreated, creado)
 }
 
 // Delete /posts/:idPost
 // Eliminar un post 
 func (api *PostsDeComunidadAPI) PostsIdPostDelete(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+	idPostStr := c.Param("idPost")
+	idPost, err := strconv.Atoi(idPostStr)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "ID de post inválido"})
+		return
+	}
+
+	result, err := api.DB.Exec(`DELETE FROM postComunidad WHERE id = $1`, idPost)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error al eliminar post: " + err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(404, gin.H{"error": "Post no encontrado"})
+		return
+	}
+
+	c.Status(204)
 }
 
 // Get /posts/:idPost
 // Obtener detalles de un post 
 func (api *PostsDeComunidadAPI) PostsIdPostGet(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+	idPostStr := c.Param("idPost")
+	idPost, err := strconv.Atoi(idPostStr)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "ID de post inválido"})
+		return
+	}
+
+	var p Post
+	var postPadre sql.NullInt32
+	err = api.DB.QueryRow(`SELECT id, comentario, postPadre, idUsuario, idComunidad FROM postComunidad WHERE id = $1`, idPost).Scan(&p.Id, &p.Comentario, &postPadre, &p.IdUsuario, &p.IdComunidad)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(404, gin.H{"error": "Post no encontrado"})
+		} else {
+			c.JSON(500, gin.H{"error": "Error al obtener post: " + err.Error()})
+		}
+		return
+	}
+	if postPadre.Valid {
+		v := postPadre.Int32
+		p.PostPadre = &v
+	}
+
+	c.JSON(200, p)
 }
 
 // Patch /posts/:idPost
 // Modificar un post 
 func (api *PostsDeComunidadAPI) PostsIdPostPatch(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+	idPostStr := c.Param("idPost")
+	idPost, err := strconv.Atoi(idPostStr)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "ID de post inválido"})
+		return
+	}
+
+	var update PostUpdate
+	if err := c.ShouldBindJSON(&update); err != nil {
+		c.JSON(400, gin.H{"error": "Datos inválidos: " + err.Error()})
+		return
+	}
+
+	// Verificar existencia
+	var exists bool
+	err = api.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM postComunidad WHERE id = $1)`, idPost).Scan(&exists)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error interno: " + err.Error()})
+		return
+	}
+	if !exists {
+		c.JSON(404, gin.H{"error": "Post no encontrado"})
+		return
+	}
+
+	_, err = api.DB.Exec(`UPDATE postComunidad SET comentario = $1 WHERE id = $2`, update.Comentario, idPost)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error al actualizar post: " + err.Error()})
+		return
+	}
+
+	// Devolver el post actualizado
+	var p Post
+	var postPadre sql.NullInt32
+	err = api.DB.QueryRow(`SELECT id, comentario, postPadre, idUsuario, idComunidad FROM postComunidad WHERE id = $1`, idPost).Scan(&p.Id, &p.Comentario, &postPadre, &p.IdUsuario, &p.IdComunidad)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error al obtener post actualizado: " + err.Error()})
+		return
+	}
+	if postPadre.Valid {
+		v := postPadre.Int32
+		p.PostPadre = &v
+	}
+
+	c.JSON(200, p)
 }
 
 // Get /posts/:idPost/respuestas
 // Obtener respuestas a un post 
 func (api *PostsDeComunidadAPI) PostsIdPostRespuestasGet(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+	idPostStr := c.Param("idPost")
+	idPost, err := strconv.Atoi(idPostStr)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "ID de post inválido"})
+		return
+	}
+
+	rows, err := api.DB.Query(`SELECT id, comentario, postPadre, idUsuario, idComunidad FROM postComunidad WHERE postPadre = $1 ORDER BY id ASC`, idPost)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error al obtener respuestas: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var respuestas []Post
+	for rows.Next() {
+		var p Post
+		var postPadre sql.NullInt32
+		if err := rows.Scan(&p.Id, &p.Comentario, &postPadre, &p.IdUsuario, &p.IdComunidad); err != nil {
+			c.JSON(500, gin.H{"error": "Error al leer respuestas: " + err.Error()})
+			return
+		}
+		if postPadre.Valid {
+			v := postPadre.Int32
+			p.PostPadre = &v
+		}
+		respuestas = append(respuestas, p)
+	}
+
+	c.JSON(200, respuestas)
 }
 
