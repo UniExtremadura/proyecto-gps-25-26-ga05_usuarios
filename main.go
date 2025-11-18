@@ -11,17 +11,25 @@ package main
 
 import (
 	"log"
-
-	// WARNING!
-	// Pass --git-repo-id and --git-user-id properties when generating the code
-	//
-	sw "github.com/GIT_USER_ID/GIT_REPO_ID/go"
+	"usuarios/db"
+	sw "usuarios/go"
 )
 
 func main() {
-	routes := sw.ApiHandleFunctions{}
+	db.InitDatabase()
+	defer db.DB.Close()
 
-	log.Printf("Server started")
+	usuariosAPI := &sw.UsuariosAPI{DB: db.DB}
+	artistasAPI := &sw.ArtistasAPI{DB: db.DB}
+	postsAPI := &sw.PostsDeComunidadAPI{DB: db.DB}
+	
+	routes := sw.ApiHandleFunctions{
+		UsuariosAPI: *usuariosAPI,
+		ArtistasAPI: *artistasAPI,
+		PostsDeComunidadAPI: *postsAPI,
+	}
+
+	log.Printf("Servidor iniciado")
 
 	router := sw.NewRouter(routes)
 

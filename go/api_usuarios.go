@@ -10,44 +10,464 @@
 package openapi
 
 import (
+	"database/sql"
+	"os"
+	"strconv"
+	"time"
+
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type UsuariosAPI struct {
+	DB *sql.DB
+}
+
+var JwtKey = []byte(os.Getenv("JWT_SECRET_KEY"))
+
+type Claims struct {
+	UserID int `json:"user_id"`
+	jwt.StandardClaims
+}
+
+type PeticionLogin struct {
+	Correo string 		`json:"correo"`
+	Contrasena string 	`json:"contrasena"`
 }
 
 // Get /usuarios
-// Buscar usuarios por nombre 
+// Buscar usuarios por nombre
 func (api *UsuariosAPI) UsuariosGet(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+	// Obtener parámetro de búsqueda
+	query := c.Query("q")
+	
+	if query == "" {
+		c.JSON(400, gin.H{"error": "Parámetro de búsqueda 'q' requerido"})
+		return
+	}
+
+	// Buscar usuarios por nombre
+	rows, err := api.DB.Query(`
+		SELECT id, nombre, correo, direccion, telefono, descripcion, urlImagen, tipo 
+		FROM usuario 
+		WHERE nombre ILIKE $1 OR correo ILIKE $1
+		LIMIT 50
+	`, "%"+query+"%")
+	
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error al buscar usuarios: " + err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var usuarios []Usuario
+	for rows.Next() {
+		var usuario Usuario
+		err := rows.Scan(
+			&usuario.Id,
+			&usuario.Nombre,
+			&usuario.Correo,
+			&usuario.Direccion,
+			&usuario.Telefono,
+			&usuario.Descripcion,
+			&usuario.UrlImagen,
+			&usuario.Tipo,
+		)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Error al leer usuarios: " + err.Error()})
+			return
+		}
+		usuarios = append(usuarios, usuario)
+	}
+
+	c.JSON(200, usuarios)
 }
 
 // Delete /usuarios/:idUsuario
-// Eliminar un usuario por su ID 
+// Eliminar un usuario por su ID
 func (api *UsuariosAPI) UsuariosIdUsuarioDelete(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+	// Obtener ID del usuario desde la URL
+	idUsuarioStr := c.Param("idUsuario")
+	idUsuario, err := strconv.Atoi(idUsuarioStr)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "ID de usuario inválido"})
+		return
+	}
+
+	// Verificar si el usuario existe
+	var exists bool
+	err = api.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM usuario WHERE id = $1)", idUsuario).Scan(&exists)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error al verificar usuario: " + err.Error()})
+		return
+	}
+
+	if !exists {
+		c.JSON(404, gin.H{"error": "Usuario no encontrado"})
+		return
+	}
+
+	// Eliminar el usuario
+	result, err := api.DB.Exec("DELETE FROM usuario WHERE id = $1", idUsuario)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error al eliminar usuario: " + err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(404, gin.H{"error": "Usuario no encontrado"})
+		return
+	}
+
+	c.Status(204)
 }
 
 // Get /usuarios/:idUsuario
-// Obtener los datos de un usuario por su ID 
+// Obtener los datos de un usuario por su ID
 func (api *UsuariosAPI) UsuariosIdUsuarioGet(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+	// Obtener ID del usuario desde la URL
+	idUsuarioStr := c.Param("idUsuario")
+	idUsuario, err := strconv.Atoi(idUsuarioStr)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "ID de usuario inválido"})
+		return
+	}
+
+	// Buscar usuario en la base de datos
+	var usuario Usuario
+	err = api.DB.QueryRow(`
+		SELECT id, nombre, correo, direccion, telefono, descripcion, urlImagen, tipo 
+		FROM usuario 
+		WHERE id = $1
+	`, idUsuario).Scan(
+		&usuario.Id,
+		&usuario.Nombre,
+		&usuario.Correo,
+		&usuario.Direccion,
+		&usuario.Telefono,
+		&usuario.Descripcion,
+		&usuario.UrlImagen,
+		&usuario.Tipo,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(404, gin.H{"error": "Usuario no encontrado"})
+		} else {
+			c.JSON(500, gin.H{"error": "Error al obtener usuario: " + err.Error()})
+		}
+		return
+	}
+
+	c.JSON(200, usuario)
 }
 
 // Patch /usuarios/:idUsuario
 // Modificar los datos de un usuario existente 
 func (api *UsuariosAPI) UsuariosIdUsuarioPatch(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+    // Obtener ID del usuario desde la URL
+    idUsuarioStr := c.Param("idUsuario")
+    idUsuario, err := strconv.Atoi(idUsuarioStr)
+    if err != nil {
+        c.JSON(400, gin.H{"error": "ID de usuario inválido"})
+        return
+    }
+
+    // Verificar si el usuario existe
+    var exists bool
+    err = api.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM usuario WHERE id = $1)", idUsuario).Scan(&exists)
+    if err != nil {
+        c.JSON(500, gin.H{"error": "Error al verificar usuario: " + err.Error()})
+        return
+    }
+
+    if !exists {
+        c.JSON(404, gin.H{"error": "Usuario no encontrado"})
+        return
+    }
+
+    // Bind de los datos de actualización
+    var updateData UsuarioUpdate
+    if err := c.ShouldBindJSON(&updateData); err != nil {
+        c.JSON(400, gin.H{"error": "Datos de entrada inválidos: " + err.Error()})
+        return
+    }
+
+    // Construir consulta dinámica basada en los campos proporcionados
+    query := "UPDATE usuario SET "
+    params := []interface{}{}
+    paramCount := 1
+    camposActualizados := 0
+
+    // Verificar cada campo - si no está vacío, agregarlo a la actualización
+    if updateData.Nombre != "" {
+        query += "nombre = $" + strconv.Itoa(paramCount) + ", "
+        params = append(params, updateData.Nombre)
+        paramCount++
+        camposActualizados++
+    }
+    
+    if updateData.Correo != "" {
+        query += "correo = $" + strconv.Itoa(paramCount) + ", "
+        params = append(params, updateData.Correo)
+        paramCount++
+        camposActualizados++
+    }
+    
+    if updateData.Contrasena != "" {
+        // Hashear la nueva contraseña
+        contrasenaHasheada, err := bcrypt.GenerateFromPassword([]byte(updateData.Contrasena), bcrypt.DefaultCost)
+        if err != nil {
+            c.JSON(400, gin.H{"error": "Error al hashear la contraseña"})
+            return
+        }
+        query += "contrasena = $" + strconv.Itoa(paramCount) + ", "
+        params = append(params, string(contrasenaHasheada))
+        paramCount++
+        camposActualizados++
+    }
+    
+    if updateData.Direccion != "" {
+        query += "direccion = $" + strconv.Itoa(paramCount) + ", "
+        params = append(params, updateData.Direccion)
+        paramCount++
+        camposActualizados++
+    }
+    
+    if updateData.Telefono != "" {
+        query += "telefono = $" + strconv.Itoa(paramCount) + ", "
+        params = append(params, updateData.Telefono)
+        paramCount++
+        camposActualizados++
+    }
+    
+    if updateData.Descripcion != "" {
+        query += "descripcion = $" + strconv.Itoa(paramCount) + ", "
+        params = append(params, updateData.Descripcion)
+        paramCount++
+        camposActualizados++
+    }
+    
+    if updateData.UrlImagen != "" {
+        query += "urlImagen = $" + strconv.Itoa(paramCount) + ", "
+        params = append(params, updateData.UrlImagen)
+        paramCount++
+        camposActualizados++
+    }
+
+    // Verificar que hay campos para actualizar
+    if camposActualizados == 0 {
+        c.JSON(400, gin.H{"error": "No se proporcionaron campos para actualizar"})
+        return
+    }
+
+    // Remover la última coma y espacio
+    query = query[:len(query)-2]
+
+    // Agregar WHERE clause
+    query += " WHERE id = $" + strconv.Itoa(paramCount)
+    params = append(params, idUsuario)
+
+    // Ejecutar la actualización
+    _, err = api.DB.Exec(query, params...)
+    if err != nil {
+        c.JSON(500, gin.H{"error": "Error al actualizar usuario: " + err.Error()})
+        return
+    }
+
+    // Obtener el usuario actualizado para devolverlo
+    var usuarioActualizado Usuario
+    err = api.DB.QueryRow(`
+        SELECT id, nombre, correo, direccion, telefono, descripcion, urlImagen, tipo 
+        FROM usuario 
+        WHERE id = $1
+    `, idUsuario).Scan(
+        &usuarioActualizado.Id,
+        &usuarioActualizado.Nombre,
+        &usuarioActualizado.Correo,
+        &usuarioActualizado.Direccion,
+        &usuarioActualizado.Telefono,
+        &usuarioActualizado.Descripcion,
+        &usuarioActualizado.UrlImagen,
+        &usuarioActualizado.Tipo,
+    )
+
+    if err != nil {
+        c.JSON(500, gin.H{"error": "Error al obtener usuario actualizado: " + err.Error()})
+        return
+    }
+
+    c.JSON(200, usuarioActualizado)
 }
 
 // Post /usuarios
-// Registrar un nuevo usuario 
+// Registrar un nuevo usuario o hacer login
 func (api *UsuariosAPI) UsuariosPost(c *gin.Context) {
-	// Your handler implementation
-	c.JSON(200, gin.H{"status": "OK"})
+	var datos map[string]any
+
+	err := c.ShouldBindJSON(&datos)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Datos inválidos " + err.Error()})
+		return
+	}
+
+	// Sin sólo tiene correo y contraseña, es login
+	if len(datos) == 2 && datos["correo"] != nil && datos["contrasena"] != nil {
+		api.loginUsuario(c, datos)
+		return
+	}
+
+	// Si tiene más campos, es registro
+	api.registrarUsuario(c, datos)
+	
+	//c.JSON(200, gin.H{"status": "OK"})
 }
 
+func (api *UsuariosAPI) registrarUsuario(c *gin.Context, datos map[string]any) {
+	// Se extraen los datos
+    nombre, _ := datos["nombre"].(string)
+    correo, _ := datos["correo"].(string)
+    contrasena, _ := datos["contrasena"].(string)
+    direccion, _ := datos["direccion"].(string)
+    telefono, _ := datos["telefono"].(string)
+    descripcion, _ := datos["descripcion"].(string)
+    urlImagen, _ := datos["urlImagen"].(string)
+	tipoFloat, _ := datos["tipo"].(float64)
+	tipo := int(tipoFloat)
+    
+    // Validar campos requeridos
+    if nombre == "" || correo == "" || contrasena == "" {
+        c.JSON(400, gin.H{"error": "Nombre, correo y contraseña son requeridos"})
+        return
+    }
+
+	// Validar el tipo de usuario (sólo puede ser Usuario básico (4) o Artista (2))
+	if tipo != 4 && tipo != 2 {
+        c.JSON(400, gin.H{"error": "Tipo de usuario inválido"})
+        return
+	}
+
+	// Se verifica si el usuario ya existe
+	var idUsuarioExistente int
+	err := api.DB.QueryRow("SELECT id FROM usuario WHERE correo = $1", correo).Scan(&idUsuarioExistente)
+	if err != sql.ErrNoRows {
+		c.JSON(400, gin.H{"error": "El correo ya está registrado"})
+		return
+	}
+
+	// Se saca el hash de la contraseña
+	contrasenaHasheada, err := bcrypt.GenerateFromPassword([]byte(contrasena), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Error al hashear la contraseña"})
+		return
+	}
+
+	var idUsuario int
+	err = api.DB.QueryRow(
+		`INSERT INTO usuario (nombre, correo, contrasena, direccion, telefono, descripcion, urlImagen, tipo)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+		nombre, correo, string(contrasenaHasheada), direccion, telefono, descripcion, urlImagen, tipo,
+	).Scan(&idUsuario)
+
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Error al crear el usuario: " + err.Error()})
+		return
+	}
+
+	// Generar JWT automáticamente después del registro
+	caducidadJWT := time.Now().Add(24 * time.Hour)
+	claims := &Claims{
+		UserID: idUsuario,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: caducidadJWT.Unix(),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(JwtKey)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Error al generar el token"})
+		return
+	}
+
+	c.JSON(201, gin.H{
+		"id":          idUsuario,
+		"nombre":      nombre,
+		"correo":      correo,
+		"direccion":   direccion,
+		"telefono":    telefono,
+		"descripcion": descripcion,
+		"urlImagen":   urlImagen,
+		"tipo":        tipo,
+		"token":       tokenString,
+		"caducidad":   caducidadJWT,
+	})
+}
+
+func (api *UsuariosAPI) loginUsuario(c *gin.Context, datos map[string]any) {
+	var idUsuario int
+	var contrasenaHasheada string
+
+	// Se extraen los datos
+    nombre, _ := datos["nombre"].(string)
+    correo, _ := datos["correo"].(string)
+    contrasena, _ := datos["contrasena"].(string)
+    direccion, _ := datos["direccion"].(string)
+    telefono, _ := datos["telefono"].(string)
+    descripcion, _ := datos["descripcion"].(string)
+    urlImagen, _ := datos["urlImagen"].(string)
+	tipoFloat, _ := datos["tipo"].(float64)
+	tipo := int(tipoFloat)
+
+	err := api.DB.QueryRow(
+		"SELECT id, nombre, correo, contrasena, direccion, telefono, descripcion, urlImagen, tipo FROM usuario WHERE correo = $1",
+		correo,
+	).Scan(&idUsuario, &nombre, &correo, &contrasenaHasheada, &direccion, &telefono, &descripcion, &urlImagen, &tipo)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(401, gin.H{"error": "Credenciales inválidas"})
+		} else {
+			c.JSON(500, gin.H{"error": "Error interno del servidor"})
+		}
+		return
+	}
+
+	// Verificar contraseña
+	err = bcrypt.CompareHashAndPassword([]byte(contrasenaHasheada), []byte(contrasena))
+	if err != nil {
+		c.JSON(401, gin.H{"error": "Credenciales inválidas"})
+		return
+	}
+
+	// Generar JWT
+	caducidadJWT := time.Now().Add(24 * time.Hour)
+	claims := &Claims{
+		UserID: idUsuario,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: caducidadJWT.Unix(),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	strToken, err := token.SignedString(JwtKey)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Error al generar el token"})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"id":          idUsuario,
+		"nombre":      nombre,
+		"correo":      correo,
+		"direccion":   direccion,
+		"telefono":    telefono,
+		"descripcion": descripcion,
+		"urlImagen":   urlImagen,
+		"tipo":        tipo,
+		"token":       strToken,
+		"caducidad":   caducidadJWT,
+	})
+}

@@ -1,0 +1,48 @@
+services:
+  usuarios-db:
+    image: postgres:18.0-alpine
+    container_name: usuarios_db
+    restart: always
+    environment:
+      POSTGRES_DB: usuarios_postgres     # nombre de la base de datos
+      POSTGRES_USER: user                # usuario de acceso
+      POSTGRES_PASSWORD: 12345           # contraseña del usuario
+    ports:
+      - "5434:5432"                      # cambia el puerto externo para evitar conflicto
+    volumes:
+      - usuarios_data:/var/lib/postgresql/data
+      - ./db:/docker-entrypoint-initdb.d # scripts SQL opcionales al iniciar
+    networks:
+      - usuarios-network
+
+  usuarios-app:
+    image: golang:1.25.3-alpine
+    container_name: usuarios_app
+    working_dir: /app
+    ports:
+      - "8082:8080"                      # puerto externo distinto al de contenido
+    depends_on:
+      - usuarios-db
+    environment:
+      DB_HOST: usuarios-db
+      DB_PORT: 5432
+      DB_NAME: usuarios_postgres
+      DB_USER: user
+      DB_PASSWORD: 12345
+      JWT_SECRET_KEY: 12345
+      GIN_MODE: debug
+      CONTENT_BASE_URL: "http://contenido-app:8080"   # microservicio de contenido
+    volumes:
+      - .:/app
+    command: go run main.go
+    networks:
+      - usuarios-network
+
+volumes:
+  usuarios_data:
+
+networks:
+  usuarios-network:
+    driver: bridge
+    external: true
+    name: micro-servicios
