@@ -954,47 +954,6 @@ components:
           type: string
           example: "Mensaje de error descriptivo"
 
-    # Favoritos - esquemas usados internamente/por el servicio de contenido
-    GetAlbumFavorito:
-      type: object
-      properties:
-        idAlbum:
-          type: integer
-          example: 456
-        nombre:
-          type: string
-          example: "Primer Álbum"
-        titulo:
-          type: string
-          example: "Primer Álbum"
-        nombreArtista:
-          type: string
-          example: "La Banda"
-        portada:
-          type: string
-          format: uri
-          example: https://example.com/albums/456.jpg
-
-    GetCancionFavorita:
-      type: object
-      properties:
-        idCancion:
-          type: integer
-          example: 123
-        nombre:
-          type: string
-          example: "Canción de ejemplo"
-
-    GetArtistaFavorito:
-      type: object
-      properties:
-        idArtista:
-          type: integer
-          example: 789
-        nombre:
-          type: string
-          example: "Ejemplo Artista"
-
     AlbumFavorito:
       type: object
       properties:
