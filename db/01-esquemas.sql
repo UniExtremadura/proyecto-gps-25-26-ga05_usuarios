@@ -19,22 +19,6 @@ CREATE TABLE usuario (
   tipo        INTEGER NOT NULL REFERENCES tipoUsuario(id)
 );
 
--- listas de reproducción de un usuario
-CREATE TABLE lista (
-  id         SERIAL PRIMARY KEY,
-  nombre     VARCHAR(150) NOT NULL,
-  urlImagen  TEXT,
-  idUsuario  INTEGER NOT NULL REFERENCES usuario(id) ON DELETE CASCADE
-);
-
--- Relación N:M entre lista y canción
-CREATE TABLE lista_canciones (
-  idLista    INTEGER NOT NULL REFERENCES lista(id) ON DELETE CASCADE,
-  idCancion  INTEGER NOT NULL,
-  PRIMARY KEY (idLista, idCancion)
-);
-
-
 -- Canciones favoritas de un usuario
 CREATE TABLE fav_cancion (
   idUsuario  INTEGER NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
@@ -44,13 +28,6 @@ CREATE TABLE fav_cancion (
 
 -- Álbumes favoritos
 CREATE TABLE fav_album (
-  idUsuario  INTEGER NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
-  idAlbum    INTEGER NOT NULL ,
-  PRIMARY KEY (idUsuario, idAlbum)
-);
-
--- Álbumes en lista de deseos
-CREATE TABLE deseo_album (
   idUsuario  INTEGER NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
   idAlbum    INTEGER NOT NULL ,
   PRIMARY KEY (idUsuario, idAlbum)

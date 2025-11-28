@@ -37,32 +37,6 @@ INSERT INTO usuario (nombre, correo, contrasena, direccion, telefono, descripcio
 ('Elena Navarro', 'elena@example.com', 'hash_contra_10', 'Calle Verde 90, Málaga', '610112233',
  'Descubridora de nuevos talentos.', 'https://img.com/elena.jpg', 4);
 
--- listas de reproducción
-INSERT INTO lista (nombre, urlImagen, idUsuario) VALUES
-('Pop Favoritos', 'https://img.com/lista-pop.jpg', 1),
-('Rock Clásico', 'https://img.com/lista-rock.jpg', 2),
-('Indie Chill', 'https://img.com/lista-indie.jpg', 3),
-('Workout Mix', 'https://img.com/lista-gym.jpg', 1),
-('Lo mejor de 2024', 'https://img.com/lista-2024.jpg', 2),
-('Jazz Nights', 'https://img.com/lista-jazz.jpg', 6),
-('Roadtrip Vibes', 'https://img.com/lista-road.jpg', 7),
-('Acústicos Relax', 'https://img.com/lista-acoustic.jpg', 6),
-('Conciertos en Vivo', 'https://img.com/lista-live.jpg', 8),
-('Retro Collection', 'https://img.com/lista-retro.jpg', 9);
-
--- Canciones en listas de reproducción
-INSERT INTO lista_canciones (idLista, idCancion) VALUES
-(1, 1), (1, 2), (1, 10), (1, 12),
-(2, 5), (2, 6), (2, 7), (2, 9),
-(3, 15), (3, 16), (3, 17),
-(4, 11), (4, 13), (4, 14),
-(5, 18), (5, 19), (5, 20),
-(6, 3), (6, 15),
-(7, 5), (7, 7), (7, 9),
-(8, 1), (8, 3),
-(9, 4), (9, 6), (9, 8),
-(10, 10), (10, 11), (10, 12);
-
 -- Canciones favoritas
 INSERT INTO fav_cancion (idUsuario, idCancion) VALUES
 (1, 1), (1, 10),
@@ -85,11 +59,6 @@ INSERT INTO fav_album (idUsuario, idAlbum) VALUES
 (5, 5), (6, 3),
 (7, 4), (8, 5),
 (9, 2), (10, 1);
-
--- Álbumes deseados
-INSERT INTO deseo_album (idUsuario, idAlbum) VALUES
-(1, 5), (2, 1), (3, 2), (3, 3), (4, 4),
-(5, 1), (6, 5), (7, 2), (8, 4), (9, 3), (10, 5);
 
 -- Artistas favoritos
 INSERT INTO fav_artista (idUsuario, idArtista) VALUES
